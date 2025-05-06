@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CrimInteractableViewModel.h"
 #include "Components/BoxComponent.h"
 #include "CrimInteractableComponent.generated.h"
 
+class UCrimInteractableViewModel;
 class UCrimInteractableWidgetComponent;
 class UCrimInteractorComponent;
 
@@ -22,6 +24,7 @@ class CRIMINTERACTSYSTEM_API UCrimInteractableComponent : public UBoxComponent
 
 public:
 	UCrimInteractableComponent();
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// Called when the players interaction check begins hitting this component.
 	void BeginFocus(UCrimInteractorComponent* Interactor);
@@ -102,16 +105,28 @@ protected:
 	float InteractionTime = 0.f;
 
 	//The name that will come up when the player looks at the interactable
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interactable")
+	UPROPERTY(ReplicatedUsing = OnRep_InteractableNameText, EditAnywhere, BlueprintReadOnly, Category = "Interactable")
 	FText InteractableNameText = FText::FromString("Interactable");
 
 	//The verb that describes how the interaction works. ie "Sit" for a chair
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interactable")
+	UPROPERTY(ReplicatedUsing = OnRep_InteractableActionText, EditAnywhere, BlueprintReadOnly, Category = "Interactable")
 	FText InteractableActionText = FText::FromString("Interact");
 
 	//Whether we allow multiple players to interact with the item, or just one at any given time.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interactable")
 	bool bAllowMultipleInteractors = true;
+
+	/** The view model class to spawn. */
+	UPROPERTY(EditAnywhere, NoClear)
+	TSubclassOf<UCrimInteractableViewModel> InteractableViewModelClass = UCrimInteractableViewModel::StaticClass();
+
+	UPROPERTY(BlueprintReadOnly)
+	TObjectPtr<UCrimInteractableViewModel> InteractableViewModel;
+
+	UFUNCTION()
+	virtual void OnRep_InteractableNameText();
+	UFUNCTION()
+	virtual void OnRep_InteractableActionText();
 	
 private:
 

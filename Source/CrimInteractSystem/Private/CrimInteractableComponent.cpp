@@ -4,22 +4,33 @@
 #include "CrimInteractableComponent.h"
 
 #include "CrimInteractableWidgetComponent.h"
+#include "CrimInteractableWidgetInterface.h"
 #include "CrimInteractorComponent.h"
+#include "Net/UnrealNetwork.h"
 
 UCrimInteractableComponent::UCrimInteractableComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetCollisionProfileName(FName("Trigger"));
 	SetCanEverAffectNavigation(false);
+	SetIsReplicatedByDefault(true);
 
 	SetActive(true);
 	SetHiddenInGame(true);
 }
 
+void UCrimInteractableComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION_NOTIFY(ThisClass, InteractableNameText, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(ThisClass, InteractableActionText, COND_None, REPNOTIFY_Always);
+}
+
 void UCrimInteractableComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	GetOwner()->GetComponents<UCrimInteractableWidgetComponent>(InteractableWidgetComponents);
 }
 
@@ -39,6 +50,16 @@ void UCrimInteractableComponent::Deactivate()
 	Interactors.Empty();
 }
 
+void UCrimInteractableComponent::OnRep_InteractableNameText()
+{
+	OnInteractableNameTextUpdated.Broadcast(InteractableNameText);
+}
+
+void UCrimInteractableComponent::OnRep_InteractableActionText()
+{
+	OnInteractableActionTextUpdated.Broadcast(InteractableActionText);
+}
+
 void UCrimInteractableComponent::BeginFocus(UCrimInteractorComponent* Interactor)
 {
 	if (!IsActive() || !GetOwner() || !Interactor)
@@ -50,6 +71,20 @@ void UCrimInteractableComponent::BeginFocus(UCrimInteractorComponent* Interactor
 
 	if (Cast<APawn>(Interactor->GetOwner())->IsLocallyControlled())
 	{
+		if (!InteractableViewModel)
+		{
+			InteractableViewModel = NewObject<UCrimInteractableViewModel>(this, InteractableViewModelClass);
+			InteractableViewModel->SetInteractable(this);
+			for (TObjectPtr<UCrimInteractableWidgetComponent>& WidgetComp : InteractableWidgetComponents)
+			{
+				if (WidgetComp->GetWidget() && WidgetComp->GetWidget()->Implements<UCrimInteractableWidgetInterface>())
+				{
+					ICrimInteractableWidgetInterface::Execute_SetInteractableViewModel(
+						WidgetComp->GetWidget(), InteractableViewModel);
+				}
+			}
+		}
+		
 		for (TObjectPtr<UCrimInteractableWidgetComponent>& WidgetComp : InteractableWidgetComponents)
 		{
 			WidgetComp->SetHiddenInGame(false);
@@ -115,14 +150,21 @@ void UCrimInteractableComponent::Interact(UCrimInteractorComponent* Interactor)
 
 void UCrimInteractableComponent::SetInteractableNameText(const FText& NewNameText)
 {
-	InteractableNameText = NewNameText;
-	OnInteractableNameTextUpdated.Broadcast(InteractableNameText);
+	if (GetOwner()->HasAuthority())
+	{
+		InteractableNameText = NewNameText;
+		OnRep_InteractableNameText();
+	}
 }
 
 void UCrimInteractableComponent::SetInteractableActionText(const FText& NewActionText)
 {
-	InteractableActionText = NewActionText;
-	OnInteractableActionTextUpdated.Broadcast(InteractableActionText);
+	if (GetOwner()->HasAuthority())
+	{
+		InteractableActionText = NewActionText;
+		OnRep_InteractableActionText();
+	}
+	
 }
 
 float UCrimInteractableComponent::GetInteractPercentage()

@@ -33,8 +33,6 @@ struct CRIMINTERACTSYSTEM_API FInteractionData
 	bool bInteractHeld;
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FInteractorDelegate, UCrimInteractableComponent*, Interactable);
-
 /**
  * Grants the ability to interact with InteractableComponents.
  */
@@ -46,10 +44,26 @@ class CRIMINTERACTSYSTEM_API UCrimInteractorComponent : public UBoxComponent
 public:
 	UCrimInteractorComponent();
 
-	UFUNCTION(BlueprintCallable)
+	/** Begins interacting with the current interactable. */
+	UFUNCTION(BlueprintCallable, Category = "CrimInteractSystem")
 	void BeginInteract();
-	UFUNCTION(BlueprintCallable)
+	/** Ends interacting with the current interactable. */
+	UFUNCTION(BlueprintCallable, Category = "CrimInteractSystem")
 	void EndInteract();
+
+	/**
+	 * @return A const reference to all the interactable components.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "CrimInteractSystem")
+	const TArray<UCrimInteractableComponent*>& GetInteractables() const;
+
+	/**
+	 * Tries to set the current interactable to the passed in interactable. If the Interactable is not in the existing
+	 * array of InteractableComponents nothing happens.
+	 * @param Interactable The interactable you want to set.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CrimInteractSystem")
+	void SetInteractable(UCrimInteractableComponent* Interactable);
 
 	//Helper function to make grabbing the current Interactable faster
 	FORCEINLINE UCrimInteractableComponent* GetInteractable() const {return InteractionData.ViewedInteractionComponent;}
@@ -62,30 +76,6 @@ public:
 
 	// Gets the time till we interact with the current interactable
 	float GetRemainingInteractTime() const;
-
-	//[local + server] Called when the player presses the interact key whilst focusing on this interactable actor.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnBeginInteract;
-
-	//[local + server] Called when the player releases the interact key, stops looking at the interactable actor, or gets too far away after starting an interaction.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnEndInteract;
-
-	//[local + server] Called when the player presses the interact key whilst focusing on this interactable actor.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnBeginFocus;
-
-	//[local + server] Called when the player releases the interact key, stops looking at the interactable actor, or gets too far away after starting an interaction.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnEndFocus;
-
-	//[local + server] Called when the player has interacted with the item for the required amount of time.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnInteract;
-
-	//[local + server] Called when our current Interactable changes.
-	UPROPERTY(EditDefaultsOnly, BlueprintAssignable)
-	FInteractorDelegate OnInteractableUpdated;
 
 protected:
 	virtual void BeginPlay() override;
@@ -103,11 +93,6 @@ protected:
 	void CouldntFindInteractable();
 	void FoundNewInteractable(UCrimInteractableComponent* Interactable);
 
-	UFUNCTION(Server, Reliable, Category = "Interaction")
-	void Server_BeginInteract();
-	UFUNCTION(Server, Reliable, Category = "Interaction")
-	void Server_EndInteract();
-
 	void Interact();
 	
 	UFUNCTION()
@@ -116,19 +101,11 @@ protected:
 	void OnEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 private:
-
-	/**
-	 * Allows the Interactor to respond to interacting with an interactable. 
-	 */
 	
-	UFUNCTION()
-	void OnBeginInteractWithInteractable(UCrimInteractorComponent* Interactor);
-	UFUNCTION()
-	void OnEndInteractWithInteractable(UCrimInteractorComponent* Interactor);
-	UFUNCTION()
-	void OnBeginFocusWithInteractable(UCrimInteractorComponent* Interactor);
-	UFUNCTION()
-	void OnEndFocusWithInteractable(UCrimInteractorComponent* Interactor);
-	UFUNCTION()
-	void OnInteractWithInteractable(UCrimInteractorComponent* Interactor);
+	void Internal_BeginInteract(UCrimInteractableComponent* Interactable);
+
+	UFUNCTION(Server, Reliable)
+	void Server_Internal_BeginInteract(UCrimInteractableComponent* Interactable);
+	UFUNCTION(Server, Reliable)
+	void Server_EndInteract();
 };

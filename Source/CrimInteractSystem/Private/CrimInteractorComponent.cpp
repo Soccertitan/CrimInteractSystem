@@ -23,42 +23,7 @@ void UCrimInteractorComponent::BeginPlay()
 
 void UCrimInteractorComponent::BeginInteract()
 {
-	if(!GetOwner()->HasAuthority())
-	{
-		Server_BeginInteract();
-	}
-
-	/**
-	 * As an optimization, the server only checks that we're looking at an item once we begin interacting with it.
-	 * This saves the server doing a check every tick for an interactable Item. The exception is a non-instant interact.
-	 * In this case, the server will check every tick for the duration of the interact
-	 */
-	if (GetOwner()->HasAuthority())
-	{
-		PerformInteractionCheck();
-	}
-
-	InteractionData.bInteractHeld = true;
-
-	if (UCrimInteractableComponent* Interactable = GetInteractable())
-	{
-		Interactable->BeginInteract(this);
-
-		if (FMath::IsNearlyZero(Interactable->GetInteractionTime()))
-		{
-			Interact();
-		}
-		else
-		{
-			GetOwner()->GetWorldTimerManager().SetTimer(
-				TimerHandle_Interact,
-				this,
-				&UCrimInteractorComponent::Interact,
-				Interactable->GetInteractionTime(),
-				false
-			);
-		}
-	}
+	Internal_BeginInteract(GetInteractable());
 }
 
 void UCrimInteractorComponent::EndInteract()
@@ -76,6 +41,21 @@ void UCrimInteractorComponent::EndInteract()
 	{
 		Interactable->EndInteract(this);
 	}
+}
+
+const TArray<UCrimInteractableComponent*>& UCrimInteractorComponent::GetInteractables() const
+{
+	return InteractableComponents;
+}
+
+void UCrimInteractorComponent::SetInteractable(UCrimInteractableComponent* Interactable)
+{
+	if (!InteractableComponents.Contains(Interactable))
+	{
+		return;
+	}
+
+	FoundNewInteractable(Interactable);
 }
 
 bool UCrimInteractorComponent::IsInteracting() const
@@ -122,7 +102,6 @@ void UCrimInteractorComponent::CouldntFindInteractable()
 	}
 
 	InteractionData.ViewedInteractionComponent = nullptr;
-	OnInteractableUpdated.Broadcast(nullptr);
 }
 
 void UCrimInteractorComponent::FoundNewInteractable(UCrimInteractableComponent* Interactable)
@@ -134,34 +113,8 @@ void UCrimInteractorComponent::FoundNewInteractable(UCrimInteractableComponent* 
 		OldInteractable->EndFocus(this);
 	}
 
-	if (IsValid(InteractionData.ViewedInteractionComponent))
-	{
-		InteractionData.ViewedInteractionComponent->OnInteract.RemoveAll(this);
-		InteractionData.ViewedInteractionComponent->OnBeginInteract.RemoveAll(this);
-		InteractionData.ViewedInteractionComponent->OnEndInteract.RemoveAll(this);
-		InteractionData.ViewedInteractionComponent->OnBeginFocus.RemoveAll(this);
-		InteractionData.ViewedInteractionComponent->OnEndFocus.RemoveAll(this);
-	}
-
-	Interactable->OnInteract.AddUniqueDynamic(this, &UCrimInteractorComponent::OnInteractWithInteractable);
-	Interactable->OnBeginInteract.AddUniqueDynamic(this, &UCrimInteractorComponent::OnBeginInteractWithInteractable);
-	Interactable->OnEndInteract.AddUniqueDynamic(this, &UCrimInteractorComponent::OnEndInteractWithInteractable);
-	Interactable->OnBeginFocus.AddUniqueDynamic(this, &UCrimInteractorComponent::OnBeginFocusWithInteractable);
-	Interactable->OnEndFocus.AddUniqueDynamic(this, &UCrimInteractorComponent::OnEndFocusWithInteractable);
-
 	InteractionData.ViewedInteractionComponent = Interactable;
-	OnInteractableUpdated.Broadcast(Interactable);
 	Interactable->BeginFocus(this);
-}
-
-void UCrimInteractorComponent::Server_BeginInteract_Implementation()
-{
-	BeginInteract();
-}
-
-void UCrimInteractorComponent::Server_EndInteract_Implementation()
-{
-	EndInteract();
 }
 
 void UCrimInteractorComponent::Interact()
@@ -204,42 +157,57 @@ void UCrimInteractorComponent::OnEndOverlap(UPrimitiveComponent* OverlappedCompo
 	}
 }
 
-void UCrimInteractorComponent::OnBeginInteractWithInteractable(UCrimInteractorComponent* Interactor)
+void UCrimInteractorComponent::Internal_BeginInteract(UCrimInteractableComponent* Interactable)
 {
-	if (Interactor == this)
+	if(!GetOwner()->HasAuthority())
 	{
-		OnBeginInteract.Broadcast(InteractionData.ViewedInteractionComponent);
+		Server_Internal_BeginInteract(Interactable);
+	}
+
+	if (Interactable != GetInteractable())
+	{
+		SetInteractable(Interactable);
+	}
+
+	/**
+	 * As an optimization, the server only checks that we're looking at an item once we begin interacting with it.
+	 * This saves the server doing a check every tick for an interactable Item. The exception is a non-instant interact.
+	 * In this case, the server will check every tick for the duration of the interact
+	 */
+	if (GetOwner()->HasAuthority())
+	{
+		PerformInteractionCheck();
+	}
+
+	InteractionData.bInteractHeld = true;
+
+	if (IsValid(GetInteractable()))
+	{
+		GetInteractable()->BeginInteract(this);
+
+		if (FMath::IsNearlyZero(GetInteractable()->GetInteractionTime()))
+		{
+			Interact();
+		}
+		else
+		{
+			GetOwner()->GetWorldTimerManager().SetTimer(
+				TimerHandle_Interact,
+				this,
+				&UCrimInteractorComponent::Interact,
+				GetInteractable()->GetInteractionTime(),
+				false
+			);
+		}
 	}
 }
 
-void UCrimInteractorComponent::OnEndInteractWithInteractable(UCrimInteractorComponent* Interactor)
+void UCrimInteractorComponent::Server_Internal_BeginInteract_Implementation(UCrimInteractableComponent* Interactable)
 {
-	if (Interactor == this)
-	{
-		OnEndInteract.Broadcast(InteractionData.ViewedInteractionComponent);
-	}
+	Internal_BeginInteract(Interactable);
 }
 
-void UCrimInteractorComponent::OnBeginFocusWithInteractable(UCrimInteractorComponent* Interactor)
+void UCrimInteractorComponent::Server_EndInteract_Implementation()
 {
-	if (Interactor == this)
-	{
-		OnBeginFocus.Broadcast(InteractionData.ViewedInteractionComponent);
-	}
-}
-
-void UCrimInteractorComponent::OnEndFocusWithInteractable(UCrimInteractorComponent* Interactor)
-{
-	if (Interactor == this)
-	{
-		OnEndFocus.Broadcast(InteractionData.ViewedInteractionComponent);
-	}
-}
-
-void UCrimInteractorComponent::OnInteractWithInteractable(UCrimInteractorComponent* Interactor)
-{
-	if (Interactor == this)
-	{
-		OnInteract.Broadcast(InteractionData.ViewedInteractionComponent);
-	}
+	EndInteract();
 }
